@@ -1,0 +1,6 @@
+{
+  "name": "Doomsday Player",
+  "description": "GPU-accelerated cinema video player with on-screen video orientation toggle, local file folder view, clean UI mode, 200% volume boost, manual zoom/crop, Vulkan HDR output, 3 engine modes, Dolby Atmos audio, and real-time diagnostic telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
