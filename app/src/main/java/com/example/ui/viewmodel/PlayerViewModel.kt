@@ -8,11 +8,15 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.example.data.AppDatabase
@@ -116,6 +120,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _availableAudioTracks = MutableStateFlow<List<AudioTrackInfo>>(emptyList())
     val availableAudioTracks: StateFlow<List<AudioTrackInfo>> = _availableAudioTracks.asStateFlow()
 
+    private val _selectedAudioTrack = MutableStateFlow<AudioTrackInfo?>(null)
+    val selectedAudioTrack: StateFlow<AudioTrackInfo?> = _selectedAudioTrack.asStateFlow()
+
     private val _telemetry = MutableStateFlow(DiagnosticTelemetry())
     val telemetry: StateFlow<DiagnosticTelemetry> = _telemetry.asStateFlow()
 
@@ -138,6 +145,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     init {
         initExoPlayer()
         initSystemVolumeAndBrightness()
+        _currentBrightness.value = settings.value.rememberedBrightness
     }
 
     private fun initSystemVolumeAndBrightness() {
@@ -152,8 +160,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun initExoPlayer() {
         if (exoPlayer != null) return
 
-        exoPlayer = ExoPlayer.Builder(getApplication())
+        val renderersFactory = DefaultRenderersFactory(getApplication())
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        exoPlayer = ExoPlayer.Builder(getApplication(), renderersFactory)
             .setTrackSelector(trackSelector)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
                 playWhenReady = true
@@ -180,8 +199,99 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             else -> Unit
                         }
                     }
+
+                    override fun onTracksChanged(tracks: Tracks) {
+                        extractTracks(tracks)
+                    }
                 })
             }
+    }
+
+    private fun extractTracks(tracks: Tracks) {
+        val audioList = mutableListOf<AudioTrackInfo>()
+        val subList = mutableListOf<SubtitleTrack>()
+
+        subList.add(SubtitleTrack("none", "Off (Subtitles Disabled)", "none"))
+
+        var audioCount = 0
+        for (groupIndex in 0 until tracks.groups.size) {
+            val group = tracks.groups[groupIndex]
+            if (group.type == C.TRACK_TYPE_AUDIO) {
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    val isSelected = group.isTrackSelected(trackIndex)
+
+                    val lang = format.language?.uppercase() ?: "AUDIO"
+                    val mime = format.sampleMimeType ?: "audio/*"
+                    val codecName = when {
+                        mime.contains("ac3", ignoreCase = true) || mime.contains("a52", ignoreCase = true) -> "Dolby AC-3 (ATSC A/52B)"
+                        mime.contains("eac3", ignoreCase = true) -> "Dolby Digital Plus (E-AC-3)"
+                        mime.contains("ac4", ignoreCase = true) -> "Dolby AC-4"
+                        mime.contains("dts", ignoreCase = true) -> "DTS-HD Audio"
+                        mime.contains("truehd", ignoreCase = true) -> "Dolby TrueHD"
+                        mime.contains("flac", ignoreCase = true) -> "FLAC Hi-Res"
+                        mime.contains("opus", ignoreCase = true) -> "Opus HQ"
+                        mime.contains("mp4a", ignoreCase = true) || mime.contains("aac", ignoreCase = true) -> "AAC Audio"
+                        else -> mime.substringAfterLast("/").uppercase()
+                    }
+
+                    val channels = when (format.channelCount) {
+                        8 -> "7.1 Atmos"
+                        6 -> "5.1 Surround"
+                        2 -> "Stereo 2.0"
+                        1 -> "Mono 1.0"
+                        else -> if (format.channelCount > 0) "${format.channelCount}ch" else "Stereo"
+                    }
+
+                    val sampleRate = if (format.sampleRate > 0) "${format.sampleRate / 1000} kHz" else "48 kHz"
+                    val label = format.label ?: "$lang Track ${audioCount + 1}"
+                    val trackDisplayName = "$label • $codecName ($channels, $sampleRate)"
+
+                    val trackInfo = AudioTrackInfo(
+                        id = "track_${groupIndex}_${trackIndex}",
+                        name = trackDisplayName,
+                        language = lang,
+                        channels = channels,
+                        sampleRate = sampleRate,
+                        codec = codecName,
+                        isExternal = false,
+                        groupIndex = groupIndex,
+                        trackIndex = trackIndex
+                    )
+                    audioList.add(trackInfo)
+                    if (isSelected) {
+                        _selectedAudioTrack.value = trackInfo
+                    }
+                    audioCount++
+                }
+            } else if (group.type == C.TRACK_TYPE_TEXT) {
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    val isSelected = group.isTrackSelected(trackIndex)
+                    val lang = format.language?.uppercase() ?: "SUB"
+                    val label = format.label ?: "$lang Subtitle"
+                    val sub = SubtitleTrack(
+                        id = "sub_${groupIndex}_${trackIndex}",
+                        name = "$label (Embedded)",
+                        language = lang
+                    )
+                    subList.add(sub)
+                    if (isSelected) {
+                        _selectedSubtitle.value = sub
+                    }
+                }
+            }
+        }
+
+        if (audioList.isNotEmpty()) {
+            _availableAudioTracks.value = audioList
+            if (_selectedAudioTrack.value == null) {
+                _selectedAudioTrack.value = audioList.first()
+            }
+        }
+        if (subList.size > 1) {
+            _availableSubtitles.value = subList
+        }
     }
 
     fun playVideo(video: VideoItem, playlist: List<VideoItem> = listOf(video), resumeTimestamp: Long? = null) {
@@ -437,7 +547,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setBrightness(value: Float) {
-        _currentBrightness.value = value.coerceIn(0.05f, 1.0f)
+        val clamped = value.coerceIn(0.05f, 1.0f)
+        _currentBrightness.value = clamped
+        updateSettings { it.copy(rememberedBrightness = clamped) }
     }
 
     fun setVolume(value: Float) {
@@ -474,6 +586,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _selectedSubtitle.value = subtitle
     }
 
+    fun selectAudioTrack(track: AudioTrackInfo) {
+        _selectedAudioTrack.value = track
+        exoPlayer?.let { player ->
+            if (track.groupIndex >= 0 && track.trackIndex >= 0) {
+                val tracks = player.currentTracks
+                if (track.groupIndex < tracks.groups.size) {
+                    val mediaTrackGroup = tracks.groups[track.groupIndex].mediaTrackGroup
+                    val override = TrackSelectionOverride(mediaTrackGroup, track.trackIndex)
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setOverrideForType(override)
+                        .build()
+                }
+            }
+        }
+    }
+
     fun loadExternalSubtitle(uri: Uri, fileName: String) {
         val externalTrack = SubtitleTrack(
             id = "ext_${System.currentTimeMillis()}",
@@ -489,13 +618,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun loadExternalAudioTrack(uri: Uri, fileName: String) {
         val externalTrack = AudioTrackInfo(
             id = "ext_aud_${System.currentTimeMillis()}",
-            name = "External: $fileName",
-            language = "custom",
+            name = "External: $fileName (Direct Bitstream)",
+            language = "EXT",
             channels = "Dolby Stereo Passthrough",
             sampleRate = "48 kHz",
+            codec = "External Audio Source",
             isExternal = true
         )
-        _availableAudioTracks.value = _availableAudioTracks.value + externalTrack
+        _availableAudioTracks.value = listOf(externalTrack) + _availableAudioTracks.value
+        _selectedAudioTrack.value = externalTrack
     }
 
     fun setScreenOrientation(mode: ScreenOrientationMode) {

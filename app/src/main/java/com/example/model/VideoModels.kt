@@ -36,14 +36,58 @@ enum class AudioMode(val displayName: String, val detail: String) {
 
 enum class AspectRatioMode(val displayName: String, val shortName: String) {
     FIT("Fit to Screen", "FIT"),
-    FILL("Fill / Stretch", "FILL"),
-    ZOOM("Zoom / Crop", "CROP"),
+    FILL("Fill / Stretch (6.6\")", "FILL"),
+    ZOOM("Crop Full Screen (6.6\")", "CROP"),
+    PHONE_20_9("Phone 6.6\" (20:9)", "6.6\""),
+    CINEMA_21_9("Cinema 21:9", "21:9"),
     RATIO_16_9("Standard 16:9", "16:9"),
     RATIO_4_3("Classic 4:3", "4:3"),
-    CINEMA_21_9("Cinema 21:9", "21:9"),
     ORIGINAL("100% Original", "100%"),
     CUSTOM_MANUAL("Manual Zoom & Pan", "MANUAL")
 }
+
+enum class MediaViewMode(val displayName: String) {
+    TREE("Tree"),
+    FOLDERS("Folders"),
+    VIDEOS("Videos")
+}
+
+enum class MediaLayoutMode(val displayName: String) {
+    LIST("List"),
+    GRID("Grid")
+}
+
+enum class SortField(val displayName: String, val iconCode: String) {
+    TITLE("Title", "T"),
+    DURATION("Duration", "⏱"),
+    DATE("Date", "📅"),
+    SIZE("Size", "💾"),
+    LOCATION("Location", "📍")
+}
+
+enum class SortOrder(val displayName: String) {
+    ASCENDING("Ascending (A-Z)"),
+    DESCENDING("Descending (Z-A)")
+}
+
+data class DisplayFieldsConfig(
+    val showDuration: Boolean = true,
+    val showFolderDuration: Boolean = true,
+    val showExtension: Boolean = true,
+    val showPath: Boolean = true,
+    val showPlayedProgress: Boolean = true,
+    val showResolution: Boolean = true,
+    val showSize: Boolean = true,
+    val showThumbnail: Boolean = true
+)
+
+data class QuickSettingsState(
+    val mediaViewMode: MediaViewMode = MediaViewMode.FOLDERS,
+    val mediaLayoutMode: MediaLayoutMode = MediaLayoutMode.LIST,
+    val sortField: SortField = SortField.TITLE,
+    val sortOrder: SortOrder = SortOrder.ASCENDING,
+    val displayFields: DisplayFieldsConfig = DisplayFieldsConfig()
+)
 
 enum class DecoderMode(val displayName: String, val badge: String, val description: String) {
     HW_PLUS("HW+ (Multi-Thread)", "HW+", "MediaCodec Multi-Threaded Low Latency Hardware Decoder"),
@@ -145,7 +189,10 @@ data class AudioTrackInfo(
     val language: String,
     val channels: String = "Stereo 2.0",
     val sampleRate: String = "48 kHz",
-    val isExternal: Boolean = false
+    val codec: String = "AC3 / EAC3 / AAC",
+    val isExternal: Boolean = false,
+    val groupIndex: Int = -1,
+    val trackIndex: Int = -1
 )
 
 data class DiagnosticTelemetry(
@@ -187,5 +234,8 @@ data class PlayerSettings(
     val debandFilterEnabled: Boolean = true,
     val anime4kUpscale: Boolean = false,
     val showDiagnosticHud: Boolean = true,
-    val decoderMode: DecoderMode = DecoderMode.HW_PLUS
+    val decoderMode: DecoderMode = DecoderMode.HW_PLUS,
+    val rememberedBrightness: Float = 0.7f,
+    val autoBrightnessDisabled: Boolean = true,
+    val quickSettings: QuickSettingsState = QuickSettingsState()
 )

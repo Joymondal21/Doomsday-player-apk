@@ -31,6 +31,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.model.DisplayFieldsConfig
+import com.example.model.MediaLayoutMode
+import com.example.model.MediaViewMode
+import com.example.model.QuickSettingsState
+import com.example.model.SortField
+import com.example.model.SortOrder
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
@@ -165,6 +176,8 @@ fun HomeScreen(
         viewModel.refreshVideos()
     }
 
+    var showQuickSettingsDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = DoomsdayObsidian,
@@ -197,6 +210,7 @@ fun HomeScreen(
             TopBrandingHeader(
                 settings = settings,
                 onRefresh = { viewModel.refreshVideos() },
+                onQuickSettingsClick = { showQuickSettingsDialog = true },
                 onTuningClick = { viewModel.setSelectedTab(3) }
             )
 
@@ -299,6 +313,22 @@ fun HomeScreen(
                 onDelete = { viewModel.deleteVideo(video) }
             )
         }
+
+        // Quick Settings Dialog
+        if (showQuickSettingsDialog) {
+            QuickSettingsDialog(
+                quickSettings = settings.quickSettings,
+                onDismiss = { showQuickSettingsDialog = false },
+                onSave = { updatedQs ->
+                    viewModel.updateSettings { it.copy(quickSettings = updatedQs) }
+                    showQuickSettingsDialog = false
+                    when (updatedQs.mediaViewMode) {
+                        MediaViewMode.VIDEOS -> viewModel.setSelectedTab(0)
+                        MediaViewMode.FOLDERS, MediaViewMode.TREE -> viewModel.setSelectedTab(1)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -306,6 +336,7 @@ fun HomeScreen(
 private fun TopBrandingHeader(
     settings: PlayerSettings,
     onRefresh: () -> Unit,
+    onQuickSettingsClick: () -> Unit,
     onTuningClick: () -> Unit
 ) {
     Row(
@@ -392,6 +423,19 @@ private fun TopBrandingHeader(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Refresh Videos",
                     tint = TitaniumSilver
+                )
+            }
+
+            IconButton(
+                onClick = onQuickSettingsClick,
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("quick_settings_top_btn")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Quick Settings",
+                    tint = DoomsdayCyan
                 )
             }
 
@@ -1636,6 +1680,282 @@ private fun EmptyVideosPlaceholder(onImport: () -> Unit) {
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
+        }
+    }
+}
+
+@Composable
+private fun QuickSettingsDialog(
+    quickSettings: QuickSettingsState,
+    onDismiss: () -> Unit,
+    onSave: (QuickSettingsState) -> Unit
+) {
+    var state by remember { mutableStateOf(quickSettings) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .wrapContentHeight()
+                .padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = DoomsdaySurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DoomsdayGlassBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Title
+                Text(
+                    text = "Quick Settings",
+                    color = TitaniumWhite,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+
+                HorizontalDivider(color = DoomsdayGlassBorder)
+
+                // 1. Media View Mode
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = "Media view mode", color = TitaniumMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DoomsdaySurfaceVariant, RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        MediaViewMode.values().forEach { mode ->
+                            val isSel = state.mediaViewMode == mode
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) DoomsdayEmerald else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { state = state.copy(mediaViewMode = mode) }
+                            ) {
+                                Text(
+                                    text = mode.displayName,
+                                    color = if (isSel) Color.Black else TitaniumWhite,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Media Layout
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = "Media Layout", color = TitaniumMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DoomsdaySurfaceVariant, RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        MediaLayoutMode.values().forEach { mode ->
+                            val isSel = state.mediaLayoutMode == mode
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) DoomsdayEmerald else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { state = state.copy(mediaLayoutMode = mode) }
+                            ) {
+                                Text(
+                                    text = mode.displayName,
+                                    color = if (isSel) Color.Black else TitaniumWhite,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 3. Sort
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Sort", color = TitaniumMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SortField.values().forEach { field ->
+                            val isSel = state.sortField == field
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) DoomsdayEmerald.copy(alpha = 0.25f) else DoomsdaySurfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSel) DoomsdayEmerald else DoomsdayGlassBorder
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { state = state.copy(sortField = field) }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(text = field.iconCode, fontSize = 12.sp)
+                                    Text(
+                                        text = field.displayName,
+                                        color = if (isSel) DoomsdayEmerald else TitaniumSilver,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DoomsdaySurfaceVariant, RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SortOrder.values().forEach { order ->
+                            val isSel = state.sortOrder == order
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) DoomsdayCyan else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { state = state.copy(sortOrder = order) }
+                            ) {
+                                Text(
+                                    text = order.displayName,
+                                    color = if (isSel) Color.Black else TitaniumWhite,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 4. Fields Checklist
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Fields", color = TitaniumMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    val df = state.displayFields
+                    val fieldItems = listOf(
+                        "Duration" to df.showDuration,
+                        "Folder duration" to df.showFolderDuration,
+                        "Extension" to df.showExtension,
+                        "Path" to df.showPath,
+                        "Played progress" to df.showPlayedProgress,
+                        "Resolution" to df.showResolution,
+                        "Size" to df.showSize,
+                        "Thumbnail" to df.showThumbnail
+                    )
+
+                    val rows = fieldItems.chunked(2)
+                    rows.forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowItems.forEach { (label, isChecked) ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isChecked) DoomsdayEmerald.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isChecked) DoomsdayEmerald else DoomsdayGlassBorder
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val newDf = when (label) {
+                                                "Duration" -> df.copy(showDuration = !df.showDuration)
+                                                "Folder duration" -> df.copy(showFolderDuration = !df.showFolderDuration)
+                                                "Extension" -> df.copy(showExtension = !df.showExtension)
+                                                "Path" -> df.copy(showPath = !df.showPath)
+                                                "Played progress" -> df.copy(showPlayedProgress = !df.showPlayedProgress)
+                                                "Resolution" -> df.copy(showResolution = !df.showResolution)
+                                                "Size" -> df.copy(showSize = !df.showSize)
+                                                "Thumbnail" -> df.copy(showThumbnail = !df.showThumbnail)
+                                                else -> df
+                                            }
+                                            state = state.copy(displayFields = newDf)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isChecked) "✓ " else "  ",
+                                            color = DoomsdayEmerald,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Text(
+                                            text = label,
+                                            color = if (isChecked) TitaniumWhite else TitaniumMuted,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                }
+                            }
+                            if (rowItems.size < 2) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DoomsdayGlassBorder)
+
+                // Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel", color = TitaniumWhite)
+                    }
+
+                    Button(
+                        onClick = { onSave(state) },
+                        colors = ButtonDefaults.buttonColors(containerColor = DoomsdayEmerald),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Done", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

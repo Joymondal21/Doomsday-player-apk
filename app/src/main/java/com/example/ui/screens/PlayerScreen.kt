@@ -164,6 +164,7 @@ fun PlayerScreen(
     val availableSubtitles by viewModel.availableSubtitles.collectAsState()
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsState()
     val availableAudioTracks by viewModel.availableAudioTracks.collectAsState()
+    val selectedAudioTrack by viewModel.selectedAudioTrack.collectAsState()
     val telemetry by viewModel.telemetry.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val screenOrientationMode by viewModel.screenOrientationMode.collectAsState()
@@ -174,6 +175,16 @@ fun PlayerScreen(
     var showZoomCropControls by remember { mutableStateOf(false) }
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableStateOf(0L) }
+
+    // Full screen immersion & disable auto brightness in player mode
+    LaunchedEffect(Unit) {
+        val window = (context as? Activity)?.window
+        if (window != null) {
+            val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     // Synchronize Screen Orientation Mode with Android Window
     LaunchedEffect(screenOrientationMode) {
@@ -226,7 +237,7 @@ fun PlayerScreen(
         }
     }
 
-    // Apply brightness to window
+    // Apply brightness to window (remembers brightness & disables auto-brightness)
     LaunchedEffect(currentBrightness) {
         val window = (context as? Activity)?.window
         if (window != null) {
@@ -277,6 +288,7 @@ fun PlayerScreen(
                             AspectRatioMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                             AspectRatioMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                             AspectRatioMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            AspectRatioMode.PHONE_20_9 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             AspectRatioMode.CINEMA_21_9 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
                             AspectRatioMode.RATIO_16_9 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
                             AspectRatioMode.RATIO_4_3 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
@@ -291,6 +303,7 @@ fun PlayerScreen(
                         AspectRatioMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         AspectRatioMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                         AspectRatioMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        AspectRatioMode.PHONE_20_9 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         AspectRatioMode.CINEMA_21_9 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
                         AspectRatioMode.RATIO_16_9 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
                         AspectRatioMode.RATIO_4_3 -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
@@ -542,9 +555,11 @@ fun PlayerScreen(
                     availableSubtitles = availableSubtitles,
                     selectedSubtitle = selectedSubtitle,
                     availableAudioTracks = availableAudioTracks,
+                    selectedAudioTrack = selectedAudioTrack,
                     volumeBoostPercent = volumeBoostPercent,
                     settings = settings,
                     onSelectSubtitle = { viewModel.selectSubtitle(it) },
+                    onSelectAudioTrack = { viewModel.selectAudioTrack(it) },
                     onLoadExternalSubtitle = { subPickerLauncher.launch("*/*") },
                     onLoadExternalAudio = { audioPickerLauncher.launch("audio/*") },
                     onToggleSubtitleTransparency = {
@@ -789,11 +804,20 @@ private fun CinemaTopBar(
                         )
                     }
 
-                    // Audio & Subtitles Button
+                    // Audio Track Button
+                    IconButton(onClick = onOpenTracks) {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = "Audio Track & Codecs",
+                            tint = DoomsdayEmerald
+                        )
+                    }
+
+                    // Subtitles Button
                     IconButton(onClick = onOpenTracks) {
                         Icon(
                             imageVector = Icons.Default.Subtitles,
-                            contentDescription = "Subtitles & Audio",
+                            contentDescription = "Subtitles & Studio",
                             tint = DoomsdayCyan
                         )
                     }
@@ -1202,9 +1226,11 @@ private fun TrackSelectionBottomSheetContent(
     availableSubtitles: List<com.example.model.SubtitleTrack>,
     selectedSubtitle: com.example.model.SubtitleTrack?,
     availableAudioTracks: List<com.example.model.AudioTrackInfo>,
+    selectedAudioTrack: com.example.model.AudioTrackInfo?,
     volumeBoostPercent: Int,
     settings: PlayerSettings,
     onSelectSubtitle: (com.example.model.SubtitleTrack) -> Unit,
+    onSelectAudioTrack: (com.example.model.AudioTrackInfo) -> Unit,
     onLoadExternalSubtitle: () -> Unit,
     onLoadExternalAudio: () -> Unit,
     onToggleSubtitleTransparency: () -> Unit,
@@ -1301,6 +1327,81 @@ private fun TrackSelectionBottomSheetContent(
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(vertical = 6.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // Audio Track Selection & External Audio Loading Section
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "AUDIO TRACKS & CODECS (AC3/EAC3/AAC/DTS)", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onLoadExternalAudio,
+                    colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text("+ Load External Audio (.m4a/.mp3)", color = DoomsdayCyan, fontSize = 10.sp)
+                }
+            }
+
+            if (availableAudioTracks.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DoomsdaySurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Default Primary Audio Stream (Dolby Digital AC3/EAC3 Fallback Active)",
+                        color = TitaniumSilver,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            } else {
+                availableAudioTracks.forEach { track ->
+                    val isSelected = selectedAudioTrack?.id == track.id
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) DoomsdayCyan.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isSelected) DoomsdayCyan else DoomsdayGlassBorder
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSelectAudioTrack(track) }
+                            .padding(2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = track.name,
+                                    color = if (isSelected) DoomsdayCyan else TitaniumWhite,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = "${track.codec} • ${track.channels} • ${track.sampleRate}",
+                                    color = TitaniumMuted,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            if (isSelected) {
+                                DoomsdayGlowingBadge(text = "ACTIVE", accentColor = DoomsdayCyan)
+                            }
+                        }
                     }
                 }
             }
