@@ -42,14 +42,18 @@ import com.example.model.MediaViewMode
 import com.example.model.QuickSettingsState
 import com.example.model.SortField
 import com.example.model.SortOrder
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Movie
@@ -180,24 +184,30 @@ fun HomeScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = DoomsdayObsidian,
+        containerColor = Color.Black,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { filePickerLauncher.launch("video/*") },
-                containerColor = DoomsdayEmerald,
-                contentColor = Color.Black,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.testTag("import_video_fab")
+                containerColor = Color(0xFF22C55E),
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .padding(bottom = 8.dp)
+                    .testTag("import_video_fab")
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(imageVector = Icons.Default.UploadFile, contentDescription = "Open File")
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Open Video", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
+        },
+        bottomBar = {
+            NextPlayerBottomBar(
+                selectedTab = selectedTab,
+                onTabSelected = { tabIndex -> viewModel.setSelectedTab(tabIndex) }
+            )
         }
     ) { innerPadding ->
         Column(
@@ -206,12 +216,12 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .statusBarsPadding()
         ) {
-            // TOP HEADER: Branding on top left + Quick Actions
+            // TOP HEADER: Next Player branding on top left + Search, Grid & Settings
             TopBrandingHeader(
                 settings = settings,
-                onRefresh = { viewModel.refreshVideos() },
+                onSearchClick = { viewModel.setSelectedTab(0) },
                 onQuickSettingsClick = { showQuickSettingsDialog = true },
-                onTuningClick = { viewModel.setSelectedTab(3) }
+                onTuningClick = { showQuickSettingsDialog = true }
             )
 
             // Quick Hardware Mode Switcher Bar
@@ -335,118 +345,66 @@ fun HomeScreen(
 @Composable
 private fun TopBrandingHeader(
     settings: PlayerSettings,
-    onRefresh: () -> Unit,
+    onSearchClick: () -> Unit,
     onQuickSettingsClick: () -> Unit,
     onTuningClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // TOP LEFT: Doomsday Player name & branding
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                DoomsdayEmerald.copy(alpha = 0.8f),
-                                Color(0xFF0F172A)
-                            )
-                        )
-                    )
-                    .border(1.5.dp, DoomsdayEmerald, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Bolt,
-                    contentDescription = null,
-                    tint = Color.Black,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+        // TOP LEFT: Next Player branding title
+        Text(
+            text = "Next Player",
+            color = TitaniumWhite,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.SansSerif
+        )
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column {
-                Text(
-                    text = "DOOMSDAY PLAYER",
-                    color = TitaniumWhite,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                    fontFamily = FontFamily.SansSerif
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "GPU VULKAN HQ",
-                        color = DoomsdayEmerald,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(text = "•", color = TitaniumMuted, fontSize = 10.sp)
-                    Text(
-                        text = settings.renderEngine.tag,
-                        color = DoomsdayCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(text = "•", color = TitaniumMuted, fontSize = 10.sp)
-                    Text(
-                        text = "SD888",
-                        color = DoomsdayAmber,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-
-        // Action buttons
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Right Action buttons
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.size(36.dp)
+                onClick = onSearchClick,
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh Videos",
-                    tint = TitaniumSilver
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = TitaniumWhite,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
             IconButton(
                 onClick = onQuickSettingsClick,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .testTag("quick_settings_top_btn")
             ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Quick Settings",
-                    tint = DoomsdayCyan
+                    imageVector = Icons.Default.GridView,
+                    contentDescription = "Layout View",
+                    tint = TitaniumWhite,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
             IconButton(
                 onClick = onTuningClick,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Tune,
-                    contentDescription = "GPU Settings",
-                    tint = DoomsdayEmerald
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = TitaniumWhite,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -1065,98 +1023,202 @@ private fun FoldersTabContent(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text(
-                text = "STORAGE DIRECTORIES (${folders.size})",
-                color = TitaniumMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
         items(folders) { folder ->
-            DoomsdayGlassCard(
-                modifier = Modifier.fillMaxWidth(),
+            NextPlayerFolderCard(
+                folder = folder,
                 onClick = {
                     if (folder.videos.isNotEmpty()) {
                         onPlayVideo(folder.videos.first())
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun NextPlayerFolderCard(
+    folder: VideoFolder,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 8.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbnail box with folder icon and duration overlay
+        Box(
+            modifier = Modifier
+                .size(width = 92.dp, height = 66.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E222B)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Folder,
+                contentDescription = null,
+                tint = Color(0xFF2D3748),
+                modifier = Modifier.size(42.dp)
+            )
+
+            // Duration badge in bottom-right corner
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xE6000000),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
             ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = null,
-                            tint = DoomsdayCyan,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = folder.folderName,
-                                color = TitaniumWhite,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${folder.videos.size} videos • ${folder.totalSizeFormatted} • ${folder.totalDurationFormatted}",
-                                color = TitaniumMuted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                text = folder.folderPath,
-                                color = TitaniumMuted.copy(alpha = 0.7f),
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+                Text(
+                    text = folder.totalDurationFormatted,
+                    color = TitaniumWhite,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
+        }
 
-                    if (folder.videos.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(folder.videos.take(6)) { vid ->
-                                Box(
-                                    modifier = Modifier
-                                        .width(140.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(DoomsdayObsidian)
-                                        .border(1.dp, DoomsdayGlassBorder, RoundedCornerShape(8.dp))
-                                        .clickable { onPlayVideo(vid) }
-                                        .padding(8.dp)
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = vid.title,
-                                            color = TitaniumSilver,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = vid.durationFormatted,
-                                            color = DoomsdayEmerald,
-                                            fontSize = 9.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+        // Title, Path, and Badges Column
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            // Green Folder Title
+            Text(
+                text = folder.folderName,
+                color = Color(0xFF22C55E),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            // Grey Path Subtext
+            Text(
+                text = folder.folderPath,
+                color = Color(0xFF94A3B8),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Badges row: "X Videos" & "X.XX GB"
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF1E293B)
+                ) {
+                    Text(
+                        text = "${folder.videos.size} Videos",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF1E293B)
+                ) {
+                    Text(
+                        text = folder.totalSizeFormatted,
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NextPlayerBottomBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Black,
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Home Tab
+            val isHome = selectedTab == 0 || selectedTab == 1
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onTabSelected(0) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isHome) Color(0xFF4A2B38) else Color.Transparent)
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Home,
+                        contentDescription = "Home",
+                        tint = if (isHome) Color.White else Color(0xFF94A3B8),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Home",
+                    color = if (isHome) Color.White else Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = if (isHome) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+
+            // Network Tab
+            val isNetwork = selectedTab == 3 || selectedTab == 4
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onTabSelected(3) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isNetwork) Color(0xFF4A2B38) else Color.Transparent)
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountTree,
+                        contentDescription = "Network",
+                        tint = if (isNetwork) Color.White else Color(0xFF94A3B8),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Network",
+                    color = if (isNetwork) Color.White else Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = if (isNetwork) FontWeight.Bold else FontWeight.Normal
+                )
             }
         }
     }

@@ -50,8 +50,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     var exoPlayer: ExoPlayer? = null
         private set
 
-    private var audioProcessor = DoomsdayAudioProcessor(application)
-    private var trackSelector = DefaultTrackSelector(application)
+    private val audioProcessor = DoomsdayAudioProcessor(application)
+    private val trackSelector = DefaultTrackSelector(application)
 
     private val _currentVideo = MutableStateFlow<VideoItem?>(null)
     val currentVideo: StateFlow<VideoItem?> = _currentVideo.asStateFlow()
@@ -160,6 +160,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun initExoPlayer() {
         if (exoPlayer != null) return
 
+        trackSelector.setParameters(
+            trackSelector.parameters.buildUpon()
+                .setTunnelingEnabled(false) // Disable tunneling to fix no-audio bug on H.265/HEVC DDP5.1/AC3 videos
+                .setSelectUndeterminedTextLanguage(true)
+                .build()
+        )
+
         val renderersFactory = DefaultRenderersFactory(getApplication())
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
@@ -183,6 +190,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         _isPlaying.value = playing
                         if (playing) {
                             scheduleAutoHideControls()
+                        }
+                    }
+
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        // Fallback downmixing for H.265 multi-channel DDP5.1/AC3 audio failure
+                        val isAudioError = error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+                            error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                        if (isAudioError) {
+                            val selector = this@PlayerViewModel.trackSelector
+                            selector.setParameters(
+                                selector.parameters.buildUpon()
+                                    .setMaxAudioChannelCount(2)
+                                    .build()
+                            )
+                            prepare()
+                            play()
                         }
                     }
 
