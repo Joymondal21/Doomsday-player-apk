@@ -171,7 +171,7 @@ fun PlayerScreen(
     val screenOrientationMode by viewModel.screenOrientationMode.collectAsState()
     val orientationToastMessage by viewModel.orientationToastMessage.collectAsState()
 
-    var showTrackSelectionSheet by remember { mutableStateOf(false) }
+    var selectedTrackSheetTab by remember { mutableStateOf<Int?>(null) } // null = hidden, 0 = Audio, 1 = Subtitles
     var showEngineTuningSheet by remember { mutableStateOf(false) }
     var showZoomCropControls by remember { mutableStateOf(false) }
     var isScrubbing by remember { mutableStateOf(false) }
@@ -410,7 +410,8 @@ fun PlayerScreen(
                         onCycleOrientation = { viewModel.cycleOrientation() },
                         onToggleHud = { viewModel.updateSettings { it.copy(showDiagnosticHud = !it.showDiagnosticHud) } },
                         onToggleHdr = { viewModel.updateSettings { it.copy(hdrOutputEnabled = !it.hdrOutputEnabled) } },
-                        onOpenTracks = { showTrackSelectionSheet = true },
+                        onOpenAudioTracks = { selectedTrackSheetTab = 0 },
+                        onOpenSubtitleTracks = { selectedTrackSheetTab = 1 },
                         onOpenTuning = { showEngineTuningSheet = true },
                         onEnterPip = onEnterPip,
                         onOpenZoomCrop = { showZoomCropControls = !showZoomCropControls },
@@ -554,14 +555,15 @@ fun PlayerScreen(
             }
         }
 
-        // Track Selection Bottom Sheet (Subtitles, Audio & 200% Volume Boost)
-        if (showTrackSelectionSheet) {
+        // Track Selection Bottom Sheet (Audio Tracks vs Subtitles)
+        if (selectedTrackSheetTab != null) {
             ModalBottomSheet(
-                onDismissRequest = { showTrackSelectionSheet = false },
+                onDismissRequest = { selectedTrackSheetTab = null },
                 containerColor = DoomsdaySurface,
                 scrimColor = Color(0x99000000)
             ) {
                 TrackSelectionBottomSheetContent(
+                    initialTab = selectedTrackSheetTab ?: 0,
                     availableSubtitles = availableSubtitles,
                     selectedSubtitle = selectedSubtitle,
                     availableAudioTracks = availableAudioTracks,
@@ -576,7 +578,8 @@ fun PlayerScreen(
                         viewModel.updateSettings { it.copy(subtitleBackgroundTransparent = !it.subtitleBackgroundTransparent) }
                     },
                     onSelectAudioMode = { viewModel.updateSettings { s -> s.copy(audioMode = it) } },
-                    onSetVolumeBoost = { viewModel.setVolumeBoostPercent(it) }
+                    onSetVolumeBoost = { viewModel.setVolumeBoostPercent(it) },
+                    onUpdateSettings = { transform -> viewModel.updateSettings(transform) }
                 )
             }
         }
@@ -619,7 +622,8 @@ private fun CinemaTopBar(
     onCycleOrientation: () -> Unit,
     onToggleHud: () -> Unit,
     onToggleHdr: () -> Unit,
-    onOpenTracks: () -> Unit,
+    onOpenAudioTracks: () -> Unit,
+    onOpenSubtitleTracks: () -> Unit,
     onOpenTuning: () -> Unit,
     onEnterPip: () -> Unit,
     onOpenZoomCrop: () -> Unit,
@@ -815,16 +819,22 @@ private fun CinemaTopBar(
                     }
 
                     // Audio Track Button
-                    IconButton(onClick = onOpenTracks) {
+                    IconButton(
+                        onClick = onOpenAudioTracks,
+                        modifier = Modifier.testTag("audio_track_btn")
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Audiotrack,
-                            contentDescription = "Audio Track & Codecs",
+                            contentDescription = "Audio Tracks & Codecs",
                             tint = DoomsdayEmerald
                         )
                     }
 
                     // Subtitles Button
-                    IconButton(onClick = onOpenTracks) {
+                    IconButton(
+                        onClick = onOpenSubtitleTracks,
+                        modifier = Modifier.testTag("subtitles_btn")
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Subtitles,
                             contentDescription = "Subtitles & Studio",
@@ -1233,6 +1243,7 @@ private fun CinemaBottomControls(
 
 @Composable
 private fun TrackSelectionBottomSheetContent(
+    initialTab: Int = 0,
     availableSubtitles: List<com.example.model.SubtitleTrack>,
     selectedSubtitle: com.example.model.SubtitleTrack?,
     availableAudioTracks: List<com.example.model.AudioTrackInfo>,
@@ -1245,262 +1256,493 @@ private fun TrackSelectionBottomSheetContent(
     onLoadExternalAudio: () -> Unit,
     onToggleSubtitleTransparency: () -> Unit,
     onSelectAudioMode: (AudioMode) -> Unit,
-    onSetVolumeBoost: (Int) -> Unit
+    onSetVolumeBoost: (Int) -> Unit,
+    onUpdateSettings: ((PlayerSettings) -> PlayerSettings) -> Unit = {}
 ) {
+    var activeTab by remember { mutableStateOf(initialTab) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header
-        Text(
-            text = "AUDIO & SUBTITLES STUDIO",
-            color = DoomsdayEmerald,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-
-        // Volume Boost Slider (up to 200%)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        // Top Tab Header Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(DoomsdaySurfaceVariant, RoundedCornerShape(10.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (activeTab == 0) DoomsdayEmerald.copy(alpha = 0.3f) else Color.Transparent,
+                border = if (activeTab == 0) androidx.compose.foundation.BorderStroke(1.dp, DoomsdayEmerald) else null,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { activeTab = 0 }
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
-                        imageVector = Icons.Default.VolumeUp,
+                        imageVector = Icons.Default.Audiotrack,
                         contentDescription = null,
-                        tint = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
-                        modifier = Modifier.size(18.dp)
+                        tint = if (activeTab == 0) DoomsdayEmerald else TitaniumSilver,
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "VOLUME BOOST (+15dB LOUDNESS)",
-                        color = TitaniumWhite,
+                        text = "AUDIO & SOUND",
+                        color = if (activeTab == 0) TitaniumWhite else TitaniumSilver,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-
-                Text(
-                    text = "$volumeBoostPercent%",
-                    color = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace
-                )
             }
 
-            Slider(
-                value = volumeBoostPercent.toFloat(),
-                onValueChange = { onSetVolumeBoost(it.toInt()) },
-                valueRange = 100f..200f,
-                steps = 19,
-                colors = SliderDefaults.colors(
-                    thumbColor = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
-                    activeTrackColor = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
-                    inactiveTrackColor = Color(0x40FFFFFF)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (activeTab == 1) DoomsdayCyan.copy(alpha = 0.3f) else Color.Transparent,
+                border = if (activeTab == 1) androidx.compose.foundation.BorderStroke(1.dp, DoomsdayCyan) else null,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { activeTab = 1 }
             ) {
-                listOf(100, 125, 150, 175, 200).forEach { boostLevel ->
-                    val isSel = volumeBoostPercent == boostLevel
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isSel) {
-                            if (boostLevel > 100) Color(0xFFFF5252).copy(alpha = 0.3f) else DoomsdayCyan.copy(alpha = 0.3f)
-                        } else DoomsdaySurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isSel) {
-                                if (boostLevel > 100) Color(0xFFFF5252) else DoomsdayCyan
-                            } else DoomsdayGlassBorder
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onSetVolumeBoost(boostLevel) }
-                    ) {
-                        Text(
-                            text = "$boostLevel%",
-                            color = if (boostLevel > 100) Color(0xFFFF5252) else TitaniumWhite,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 6.dp)
-                        )
-                    }
+                Row(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Subtitles,
+                        contentDescription = null,
+                        tint = if (activeTab == 1) DoomsdayCyan else TitaniumSilver,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "SUBTITLES & STUDIO",
+                        color = if (activeTab == 1) TitaniumWhite else TitaniumSilver,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
 
-        // Audio Track Selection & External Audio Loading Section
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "AUDIO TRACKS & CODECS (AC3/EAC3/AAC/DTS)", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Button(
-                    onClick = onLoadExternalAudio,
-                    colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Text("+ Load External Audio (.m4a/.mp3)", color = DoomsdayCyan, fontSize = 10.sp)
-                }
-            }
-
-            if (availableAudioTracks.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = DoomsdaySurfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Default Primary Audio Stream (Dolby Digital AC3/EAC3 Fallback Active)",
-                        color = TitaniumSilver,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
-            } else {
-                availableAudioTracks.forEach { track ->
-                    val isSelected = selectedAudioTrack?.id == track.id
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) DoomsdayCyan.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isSelected) DoomsdayCyan else DoomsdayGlassBorder
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSelectAudioTrack(track) }
-                            .padding(2.dp)
+        if (activeTab == 0) {
+            // TAB 0: AUDIO TRACKS, LOUDNESS BOOST & SPATIAL AUDIO
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Volume Boost Slider (up to 200%)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.VolumeUp,
+                                contentDescription = null,
+                                tint = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "VOLUME BOOST (+15dB LOUDNESS)",
+                                color = TitaniumWhite,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            text = "$volumeBoostPercent%",
+                            color = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Slider(
+                        value = volumeBoostPercent.toFloat(),
+                        onValueChange = { onSetVolumeBoost(it.toInt()) },
+                        valueRange = 100f..200f,
+                        steps = 19,
+                        colors = SliderDefaults.colors(
+                            thumbColor = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
+                            activeTrackColor = if (volumeBoostPercent > 100) Color(0xFFFF5252) else DoomsdayCyan,
+                            inactiveTrackColor = Color(0x40FFFFFF)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(100, 125, 150, 175, 200).forEach { boostLevel ->
+                            val isSel = volumeBoostPercent == boostLevel
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSel) {
+                                    if (boostLevel > 100) Color(0xFFFF5252).copy(alpha = 0.3f) else DoomsdayCyan.copy(alpha = 0.3f)
+                                } else DoomsdaySurfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSel) {
+                                        if (boostLevel > 100) Color(0xFFFF5252) else DoomsdayCyan
+                                    } else DoomsdayGlassBorder
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onSetVolumeBoost(boostLevel) }
+                            ) {
                                 Text(
-                                    text = track.name,
+                                    text = "$boostLevel%",
+                                    color = if (boostLevel > 100) Color(0xFFFF5252) else TitaniumWhite,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Audio Track Selection & External Audio Loading
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "AUDIO TRACKS & CODECS (AC3/EAC3/AAC/DTS)", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = onLoadExternalAudio,
+                            colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("+ Load External Audio (.m4a/.mp3)", color = DoomsdayCyan, fontSize = 10.sp)
+                        }
+                    }
+
+                    if (availableAudioTracks.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = DoomsdaySurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Default Primary Audio Stream (Dolby Digital AC3/EAC3 Fallback Active)",
+                                color = TitaniumSilver,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    } else {
+                        availableAudioTracks.forEach { track ->
+                            val isSelected = selectedAudioTrack?.id == track.id
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) DoomsdayCyan.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isSelected) DoomsdayCyan else DoomsdayGlassBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onSelectAudioTrack(track) }
+                                    .padding(2.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = track.name,
+                                            color = if (isSelected) DoomsdayCyan else TitaniumWhite,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Text(
+                                            text = "${track.codec} • ${track.channels} • ${track.sampleRate}",
+                                            color = TitaniumMuted,
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        DoomsdayGlowingBadge(text = "ACTIVE", accentColor = DoomsdayCyan)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Dolby & Spatial Audio Modes
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = "DOLBY & SPATIAL AUDIO MODE", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    AudioMode.values().forEach { mode ->
+                        val isSelected = settings.audioMode == mode
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) DoomsdayCyan.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) DoomsdayCyan else DoomsdayGlassBorder
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSelectAudioMode(mode) }
+                                .padding(2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = mode.displayName,
                                     color = if (isSelected) DoomsdayCyan else TitaniumWhite,
                                     fontSize = 13.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
+                                if (isSelected) {
+                                    DoomsdayGlowingBadge(text = "ENGAGED", accentColor = DoomsdayCyan)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // TAB 1: SUBTITLES & STUDIO CAPTION CUSTOMIZATION
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Subtitles Track Selection Section
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "AVAILABLE SUBTITLE TRACKS", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = onLoadExternalSubtitle,
+                            colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("+ Load External (.srt/.vtt)", color = DoomsdayCyan, fontSize = 10.sp)
+                        }
+                    }
+
+                    availableSubtitles.forEach { sub ->
+                        val isSelected = selectedSubtitle?.id == sub.id
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) DoomsdayEmerald.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) DoomsdayEmerald else DoomsdayGlassBorder
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSelectSubtitle(sub) }
+                                .padding(2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = "${track.codec} • ${track.channels} • ${track.sampleRate}",
-                                    color = TitaniumMuted,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    text = sub.name,
+                                    color = if (isSelected) DoomsdayEmerald else TitaniumWhite,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
-                            }
-                            if (isSelected) {
-                                DoomsdayGlowingBadge(text = "ACTIVE", accentColor = DoomsdayCyan)
+                                if (isSelected) {
+                                    DoomsdayGlowingBadge(text = "ACTIVE", accentColor = DoomsdayEmerald)
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
 
-        // Subtitles section
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "SUBTITLE TRACKS", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Button(
-                    onClick = onLoadExternalSubtitle,
-                    colors = ButtonDefaults.buttonColors(containerColor = DoomsdaySurfaceVariant),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Text("+ Load External (.srt/.vtt)", color = DoomsdayCyan, fontSize = 10.sp)
-                }
-            }
-
-            availableSubtitles.forEach { sub ->
-                val isSelected = selectedSubtitle?.id == sub.id
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) DoomsdayEmerald.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isSelected) DoomsdayEmerald else DoomsdayGlassBorder
-                    ),
+                // Subtitle Appearance Studio Options
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onSelectSubtitle(sub) }
-                        .padding(2.dp)
+                        .background(DoomsdaySurfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Text(
+                        text = "SUBTITLE APPEARANCE & STYLING STUDIO",
+                        color = DoomsdayCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+
+                    // Transparent Background Toggle
                     Row(
-                        modifier = Modifier.padding(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = sub.name,
-                            color = if (isSelected) DoomsdayEmerald else TitaniumWhite,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                        if (isSelected) {
-                            DoomsdayGlowingBadge(text = "ACTIVE", accentColor = DoomsdayEmerald)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Transparent Background",
+                                color = TitaniumWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (settings.subtitleBackgroundTransparent) "360° Outline Shadow Contour (No Box)" else "Solid Dark Background Box",
+                                color = TitaniumMuted,
+                                fontSize = 11.sp
+                            )
                         }
+                        Switch(
+                            checked = settings.subtitleBackgroundTransparent,
+                            onCheckedChange = { onToggleSubtitleTransparency() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DoomsdayCyan,
+                                checkedTrackColor = DoomsdayCyan.copy(alpha = 0.3f)
+                            )
+                        )
                     }
-                }
-            }
-        }
 
-        // Audio Modes
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(text = "DOLBY & SPATIAL AUDIO MODE", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-            AudioMode.values().forEach { mode ->
-                val isSelected = settings.audioMode == mode
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) DoomsdayCyan.copy(alpha = 0.2f) else DoomsdaySurfaceVariant,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isSelected) DoomsdayCyan else DoomsdayGlassBorder
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onSelectAudioMode(mode) }
-                        .padding(2.dp)
-                ) {
+                    // Text Outline Shadow Toggle
                     Row(
-                        modifier = Modifier.padding(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = mode.displayName,
-                            color = if (isSelected) DoomsdayCyan else TitaniumWhite,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Text Outline & Drop Shadow",
+                                color = TitaniumWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "High contrast outline for readability on light scenes",
+                                color = TitaniumMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = settings.subtitleShadowEnabled,
+                            onCheckedChange = {
+                                onUpdateSettings { s -> s.copy(subtitleShadowEnabled = !s.subtitleShadowEnabled) }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DoomsdayCyan,
+                                checkedTrackColor = DoomsdayCyan.copy(alpha = 0.3f)
+                            )
                         )
-                        if (isSelected) {
-                            DoomsdayGlowingBadge(text = "ENGAGED", accentColor = DoomsdayCyan)
+                    }
+
+                    // Font Size Slider
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Subtitle Font Size", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "${settings.subtitleFontSizeSp.toInt()} sp",
+                                color = DoomsdayCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Slider(
+                            value = settings.subtitleFontSizeSp,
+                            onValueChange = { size ->
+                                onUpdateSettings { s -> s.copy(subtitleFontSizeSp = size) }
+                            },
+                            valueRange = 12f..32f,
+                            steps = 19,
+                            colors = SliderDefaults.colors(
+                                thumbColor = DoomsdayCyan,
+                                activeTrackColor = DoomsdayCyan
+                            )
+                        )
+                    }
+
+                    // Text Color Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = "Subtitle Text Color", color = TitaniumWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        val colorOptions = listOf(
+                            "White" to 0xFFFFFFFFL,
+                            "Yellow" to 0xFFFFEB3BL,
+                            "Cyan" to 0xFF00E5FFL,
+                            "Green" to 0xFF00E676L
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            colorOptions.forEach { (label, colorLong) ->
+                                val isSelected = settings.subtitleTextColor == colorLong
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) Color(colorLong).copy(alpha = 0.25f) else DoomsdaySurfaceVariant,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.5.dp,
+                                        if (isSelected) Color(colorLong) else DoomsdayGlassBorder
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            onUpdateSettings { s -> s.copy(subtitleTextColor = colorLong) }
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .background(Color(colorLong), CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = label,
+                                            color = TitaniumWhite,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
