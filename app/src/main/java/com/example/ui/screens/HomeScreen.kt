@@ -42,11 +42,13 @@ import com.example.model.MediaViewMode
 import com.example.model.QuickSettingsState
 import com.example.model.SortField
 import com.example.model.SortOrder
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Equalizer
@@ -58,6 +60,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -160,6 +164,8 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val hdrOnlyFilter by viewModel.selectedFilterHdrOnly.collectAsState()
+    val selectedFolder by viewModel.selectedFolder.collectAsState()
+    val folderSearchQuery by viewModel.folderSearchQuery.collectAsState()
     val selectedVideoForInfo by viewModel.selectedVideoForInfo.collectAsState()
     val videoMetadata by viewModel.videoMetadataDetails.collectAsState()
 
@@ -281,7 +287,14 @@ fun HomeScreen(
                 )
                 1 -> FoldersTabContent(
                     folders = viewModel.getFolders(),
-                    onPlayVideo = { video -> onPlayVideo(video, videoList, null) }
+                    selectedFolder = selectedFolder,
+                    folderSearchQuery = folderSearchQuery,
+                    onSelectFolder = { viewModel.selectFolder(it) },
+                    onFolderSearchQueryChange = { viewModel.updateFolderSearchQuery(it) },
+                    onPlayVideo = { video, playlist -> onPlayVideo(video, playlist, null) },
+                    onInspectVideo = { viewModel.inspectVideoDetails(it) },
+                    onShareVideo = { viewModel.shareVideo(it) },
+                    onDeleteVideo = { viewModel.deleteVideo(it) }
                 )
                 2 -> HistoryTabContent(
                     historyList = historyList,
@@ -1019,22 +1032,186 @@ private fun VideoCardItem(
 @Composable
 private fun FoldersTabContent(
     folders: List<VideoFolder>,
-    onPlayVideo: (VideoItem) -> Unit
+    selectedFolder: VideoFolder?,
+    folderSearchQuery: String,
+    onSelectFolder: (VideoFolder?) -> Unit,
+    onFolderSearchQueryChange: (String) -> Unit,
+    onPlayVideo: (VideoItem, List<VideoItem>) -> Unit,
+    onInspectVideo: (VideoItem) -> Unit,
+    onShareVideo: (VideoItem) -> Unit,
+    onDeleteVideo: (VideoItem) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(folders) { folder ->
-            NextPlayerFolderCard(
-                folder = folder,
-                onClick = {
-                    if (folder.videos.isNotEmpty()) {
-                        onPlayVideo(folder.videos.first())
+    if (selectedFolder == null) {
+        // Folders List View
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(folders) { folder ->
+                NextPlayerFolderCard(
+                    folder = folder,
+                    onClick = { onSelectFolder(folder) },
+                    onPlayFirst = {
+                        if (folder.videos.isNotEmpty()) {
+                            onPlayVideo(folder.videos.first(), folder.videos)
+                        }
                     }
+                )
+            }
+        }
+    } else {
+        // Movie / Series Folder Detail View
+        val filteredVideos = remember(selectedFolder, folderSearchQuery) {
+            if (folderSearchQuery.isBlank()) {
+                selectedFolder.videos
+            } else {
+                selectedFolder.videos.filter {
+                    it.title.contains(folderSearchQuery, ignoreCase = true) ||
+                    it.path.contains(folderSearchQuery, ignoreCase = true)
                 }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            // Header Bar: Back Button, Folder Title & Play All Button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { onSelectFolder(null) }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to Folders",
+                        tint = DoomsdayEmerald
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selectedFolder.folderName,
+                        color = TitaniumWhite,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = selectedFolder.folderPath,
+                        color = TitaniumMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (selectedFolder.videos.isNotEmpty()) {
+                            onPlayVideo(selectedFolder.videos.first(), selectedFolder.videos)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DoomsdayEmerald),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Play All", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Stats Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF1E293B)
+                ) {
+                    Text(
+                        text = "${selectedFolder.videos.size} Episodes / Videos",
+                        color = Color(0xFF22C55E),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF1E293B)
+                ) {
+                    Text(
+                        text = selectedFolder.totalDurationFormatted,
+                        color = TitaniumSilver,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF1E293B)
+                ) {
+                    Text(
+                        text = selectedFolder.totalSizeFormatted,
+                        color = TitaniumSilver,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Search Bar inside folder
+            OutlinedTextField(
+                value = folderSearchQuery,
+                onValueChange = onFolderSearchQueryChange,
+                placeholder = { Text("Search episodes / videos in ${selectedFolder.folderName}...", color = TitaniumMuted, fontSize = 12.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TitaniumMuted) },
+                trailingIcon = {
+                    if (folderSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onFolderSearchQueryChange("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = TitaniumMuted)
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = DoomsdayEmerald,
+                    unfocusedBorderColor = DoomsdayGlassBorder,
+                    focusedContainerColor = DoomsdaySurfaceVariant,
+                    unfocusedContainerColor = DoomsdaySurfaceVariant
+                )
             )
+
+            // Video Cards List inside folder
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                items(filteredVideos) { video ->
+                    VideoCardItem(
+                        video = video,
+                        onPlay = { onPlayVideo(video, selectedFolder.videos) },
+                        onInspect = { onInspectVideo(video) },
+                        onShare = { onShareVideo(video) },
+                        onDelete = { onDeleteVideo(video) }
+                    )
+                }
+            }
         }
     }
 }
@@ -1042,7 +1219,8 @@ private fun FoldersTabContent(
 @Composable
 private fun NextPlayerFolderCard(
     folder: VideoFolder,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onPlayFirst: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -1063,7 +1241,7 @@ private fun NextPlayerFolderCard(
             Icon(
                 imageVector = Icons.Default.Folder,
                 contentDescription = null,
-                tint = Color(0xFF2D3748),
+                tint = Color(0xFF22C55E),
                 modifier = Modifier.size(42.dp)
             )
 
@@ -1142,6 +1320,19 @@ private fun NextPlayerFolderCard(
                     )
                 }
             }
+        }
+
+        // Quick Play Icon Button
+        IconButton(
+            onClick = onPlayFirst,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayCircleFilled,
+                contentDescription = "Play Folder",
+                tint = Color(0xFF22C55E),
+                modifier = Modifier.size(32.dp)
+            )
         }
     }
 }

@@ -27,44 +27,79 @@ fun SubtitleOverlay(
 ) {
     if (text.isBlank()) return
 
-    val bgColor = if (settings.subtitleBackgroundTransparent) {
+    val isTransparent = settings.subtitleBackgroundTransparent
+    val bgColor = if (isTransparent) {
         Color.Transparent
     } else {
-        Color(0xB3000000)
-    }
-
-    val shadow = if (settings.subtitleShadowEnabled) {
-        Shadow(
-            color = Color.Black,
-            offset = Offset(2f, 2f),
-            blurRadius = 4f
-        )
-    } else {
-        Shadow.None
+        Color(0xCC000000)
     }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 24.dp),
+            .padding(horizontal = 24.dp, vertical = 18.dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .background(bgColor, RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .background(bgColor, RoundedCornerShape(8.dp))
+                .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
-            Text(
-                text = text,
-                textAlign = TextAlign.Center,
-                style = TextStyle(
-                    color = Color(settings.subtitleTextColor),
-                    fontSize = settings.subtitleFontSizeSp.sp,
-                    fontWeight = FontWeight.Bold,
-                    shadow = shadow,
-                    letterSpacing = 0.5.sp
+            val textColor = Color(settings.subtitleTextColor)
+            val fontSize = settings.subtitleFontSizeSp.sp
+
+            if (isTransparent) {
+                // High-contrast multi-offset outline shadows for transparent background
+                Box(contentAlignment = Alignment.Center) {
+                    val outlineOffsets = listOf(
+                        Offset(-2.5f, -2.5f),
+                        Offset(2.5f, -2.5f),
+                        Offset(-2.5f, 2.5f),
+                        Offset(2.5f, 2.5f),
+                        Offset(0f, 3f),
+                        Offset(0f, -3f),
+                        Offset(3f, 0f),
+                        Offset(-3f, 0f)
+                    )
+
+                    outlineOffsets.forEach { offset ->
+                        Text(
+                            text = text,
+                            textAlign = TextAlign.Center,
+                            style = TextStyle(
+                                color = Color.Black,
+                                fontSize = fontSize,
+                                fontWeight = FontWeight.Bold,
+                                shadow = Shadow(color = Color.Black, offset = offset, blurRadius = 2f),
+                                letterSpacing = 0.5.sp
+                            )
+                        )
+                    }
+
+                    Text(
+                        text = text,
+                        textAlign = TextAlign.Center,
+                        style = TextStyle(
+                            color = textColor,
+                            fontSize = fontSize,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                }
+            } else {
+                Text(
+                    text = text,
+                    textAlign = TextAlign.Center,
+                    style = TextStyle(
+                        color = textColor,
+                        fontSize = fontSize,
+                        fontWeight = FontWeight.Bold,
+                        shadow = Shadow(color = Color.Black, offset = Offset(2f, 2f), blurRadius = 4f),
+                        letterSpacing = 0.5.sp
+                    )
                 )
-            )
+            }
         }
     }
 }

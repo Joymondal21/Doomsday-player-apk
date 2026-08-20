@@ -17,33 +17,49 @@ class DoomsdayAudioProcessor(private val context: Context) {
 
     fun attachAudioSession(audioSessionId: Int) {
         if (audioSessionId <= 0) return
-        try {
-            release()
+        release()
 
+        try {
             virtualizer = Virtualizer(0, audioSessionId).apply {
                 if (strengthSupported) {
                     setStrength(1000.toShort()) // 100% 3D spatializer
                     enabled = true
                 }
             }
+        } catch (e: Exception) {
+            Log.w("AudioProcessor", "Virtualizer not supported on this session: ${e.message}")
+            virtualizer = null
+        }
 
+        try {
             bassBoost = BassBoost(0, audioSessionId).apply {
                 if (strengthSupported) {
                     setStrength(800.toShort())
                     enabled = true
                 }
             }
+        } catch (e: Exception) {
+            Log.w("AudioProcessor", "BassBoost not supported on this session: ${e.message}")
+            bassBoost = null
+        }
 
+        try {
             loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply {
                 setTargetGain(300) // +3dB gain boost
                 enabled = true
             }
+        } catch (e: Exception) {
+            Log.w("AudioProcessor", "LoudnessEnhancer not supported on this session: ${e.message}")
+            loudnessEnhancer = null
+        }
 
+        try {
             equalizer = Equalizer(0, audioSessionId).apply {
                 enabled = true
             }
         } catch (e: Exception) {
-            Log.e("AudioProcessor", "Error attaching audio effects: ${e.message}")
+            Log.w("AudioProcessor", "Equalizer not supported on this session: ${e.message}")
+            equalizer = null
         }
     }
 
@@ -106,12 +122,10 @@ class DoomsdayAudioProcessor(private val context: Context) {
     }
 
     fun release() {
-        try {
-            virtualizer?.release()
-            bassBoost?.release()
-            loudnessEnhancer?.release()
-            equalizer?.release()
-        } catch (_: Exception) {}
+        try { virtualizer?.release() } catch (_: Exception) {}
+        try { bassBoost?.release() } catch (_: Exception) {}
+        try { loudnessEnhancer?.release() } catch (_: Exception) {}
+        try { equalizer?.release() } catch (_: Exception) {}
         virtualizer = null
         bassBoost = null
         loudnessEnhancer = null

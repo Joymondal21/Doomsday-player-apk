@@ -268,7 +268,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getFolders(): List<VideoFolder> {
-        val map = mutableMapOf<String, Pair<String, MutableList<VideoItem>>>()
+        val map = mutableMapOf<String, Triple<String, String, MutableList<VideoItem>>>()
         _videoList.value.forEach { item ->
             val (folderName, folderPath) = if (item.path.startsWith("http")) {
                 "Cinema 4K Benchmarks" to "Web Stream / Demo Storage"
@@ -278,12 +278,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val path = f?.absolutePath ?: "/storage/emulated/0"
                 name to path
             }
-            val existing = map.getOrPut(folderName) { folderPath to mutableListOf() }
-            existing.second.add(item)
+            val key = folderPath
+            val existing = map.getOrPut(key) { Triple(folderName, folderPath, mutableListOf()) }
+            existing.third.add(item)
         }
 
-        return map.map { (name, pair) ->
-            val (path, videos) = pair
+        return map.map { (_, triple) ->
+            val (name, path, videos) = triple
             val totalSize = videos.sumOf { it.sizeBytes }
             val totalDuration = videos.sumOf { it.durationMs }
             val firstThumb = videos.firstOrNull { it.thumbnailUri != null }?.thumbnailUri
